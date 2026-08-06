@@ -42,21 +42,18 @@ func (m *ManualSensor) Start(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	m.cancel = cancel
 	m.running = true
-	m.wg.Add(1)
 	go m.run(ctx)
 	return nil
 }
 
 func (m *ManualSensor) Stop() {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.cancel != nil {
 		m.cancel()
 		m.cancel = nil
 	}
-	m.mu.Unlock()
-	m.wg.Wait()
-	m.mu.Lock()
-	m.mu.Unlock()
+	m.running = false
 }
 
 func (m *ManualSensor) IsRunning() bool {
@@ -66,26 +63,7 @@ func (m *ManualSensor) IsRunning() bool {
 }
 
 func (m *ManualSensor) run(ctx context.Context) {
-	defer func() {
-		m.mu.Lock()
-		m.running = false
-		m.mu.Unlock()
-		m.wg.Done()
-	}()
-
 	scanner := bufio.NewScanner(os.Stdin)
-	lines := make(chan string, 1)
-
-	go func() {
-		for scanner.Scan() {
-			select {
-			case lines <- scanner.Text():
-			case <-ctx.Done():
-				return
-			}
-		}
-		close(lines)
-	}()
 	fmt.Println("  m - Motion (INFO)")
 	fmt.Println("  d - Door (WARNING)")
 	fmt.Println("  s - Smoke (CRITICAL)")
@@ -95,10 +73,11 @@ func (m *ManualSensor) run(ctx context.Context) {
 		case <-ctx.Done():
 			fmt.Println("Manual sensor stopped.")
 			return
-		case text, ok := <-lines:
-			if !ok {
+		default:
+			if !scanner.Scan() {
 				return
 			}
+			text := scanner.Text()
 			if len(text) == 0 {
 				continue
 			}
