@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"github.com/ilyakaznacheev/cleanenv"
@@ -10,6 +10,7 @@ type Config struct {
 	MotionProb float64 `yaml:"motion_prob" env:"MOTION_PROB"`
 	DoorProb   float64 `yaml:"door_prob" env:"DOOR_PROB"`
 	SmokeProb  float64 `yaml:"smoke_prob" env:"SMOKE_PROB"`
+	BufferSize int     `yaml:"buffer_size" env:"BUFFER_SIZE"`
 }
 
 func LoadConfig() (*Config, error) {
@@ -19,6 +20,7 @@ func LoadConfig() (*Config, error) {
 		MotionProb: 0.3,
 		DoorProb:   0.2,
 		SmokeProb:  0.1,
+		BufferSize: 100,
 	}
 
 	if err := cleanenv.ReadConfig("config.yaml", cfg); err != nil {

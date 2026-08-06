@@ -1,18 +1,21 @@
-package main
+package logger
 
 import (
 	"context"
 	"fmt"
+
+	"goAlarmMonitoring/internal/bus"
+	"goAlarmMonitoring/pkg/types"
 )
 
 type Logger struct {
-	bus    *EventBus
+	bus    *bus.EventBus
 	cancel context.CancelFunc
 }
 
-func NewLogger(bus *EventBus) *Logger {
+func NewLogger(b *bus.EventBus) *Logger {
 	return &Logger{
-		bus: bus,
+		bus: b,
 	}
 }
 
@@ -43,6 +46,6 @@ func (l *Logger) Stop() {
 	}
 }
 
-func (l *Logger) Log(event Event) {
-	fmt.Printf("[%s] %s: %s\n", event.Level, event.Time.Format("15:04:05"), event.Type)
+func (l *Logger) Log(event types.Event) {
+	fmt.Printf("[%s] %s [DeviceID:%s] %s\n", event.Level, event.Time.Format("15:04:05"), event.DeviceID, event.Type)
 }

@@ -1,20 +1,23 @@
-package main
+package alarm
 
 import (
 	"context"
 	"fmt"
 	"sync"
+
+	"goAlarmMonitoring/internal/bus"
+	"goAlarmMonitoring/pkg/types"
 )
 
 type AlarmService struct {
-	bus    *EventBus
+	bus    *bus.EventBus
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
-func NewAlarmService(bus *EventBus) *AlarmService {
+func NewAlarmService(b *bus.EventBus) *AlarmService {
 	return &AlarmService{
-		bus: bus,
+		bus: b,
 	}
 }
 
@@ -35,9 +38,8 @@ func (as *AlarmService) Start(ctx context.Context) {
 				if !ok {
 					return
 				}
-
-				if event.Type == Smoke {
-					fmt.Printf("Smoke detected at %s!\n", event.Time.Format("15:04:05"))
+				if event.Type == types.Smoke {
+					fmt.Printf("Smoke detected at %s (DeviceID: %s)\n", event.Time.Format("15:04:05"), event.DeviceID)
 				}
 			}
 		}

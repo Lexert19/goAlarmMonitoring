@@ -1,29 +1,33 @@
-package main
+package bus
 
 import (
 	"sync"
+
+	"goAlarmMonitoring/pkg/types"
 )
 
 type EventBus struct {
-	subscribers []chan Event
+	subscribers []chan types.Event
 	mu          sync.Mutex
+	bufferSize  int
 }
 
-func NewEventBus() *EventBus {
+func NewEventBus(bufferSize int) *EventBus {
 	return &EventBus{
-		subscribers: make([]chan Event, 0),
+		subscribers: make([]chan types.Event, 0),
+		bufferSize:  bufferSize,
 	}
 }
 
-func (eb *EventBus) Subscribe() <-chan Event {
+func (eb *EventBus) Subscribe() <-chan types.Event {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
-	ch := make(chan Event, 20)
+	ch := make(chan types.Event, eb.bufferSize)
 	eb.subscribers = append(eb.subscribers, ch)
 	return ch
 }
 
-func (eb *EventBus) Publish(event Event) {
+func (eb *EventBus) Publish(event types.Event) {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
 	for _, ch := range eb.subscribers {

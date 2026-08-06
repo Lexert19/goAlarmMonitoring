@@ -1,6 +1,10 @@
-package main
+package types
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type EventType int
 
@@ -32,7 +36,17 @@ const (
 )
 
 type Event struct {
-	Type  EventType
-	Time  time.Time
-	Level Level
+	DeviceID uuid.UUID
+	Type     EventType
+	Time     time.Time
+	Level    Level
+}
+
+func NewEvent(typ EventType, level Level, deviceID uuid.UUID) Event {
+	return Event{
+		DeviceID: deviceID,
+		Type:     typ,
+		Time:     time.Now(),
+		Level:    level,
+	}
 }
