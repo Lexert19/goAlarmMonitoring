@@ -1,11 +1,46 @@
 package main
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
-type Logger struct{}
+type Logger struct {
+	bus    *EventBus
+	cancel context.CancelFunc
+}
 
-func NewLogger() *Logger {
-	return &Logger{}
+func NewLogger(bus *EventBus) *Logger {
+	return &Logger{
+		bus: bus,
+	}
+}
+
+func (l *Logger) Start(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	l.cancel = cancel
+
+	ch := l.bus.Subscribe()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				fmt.Println("Logger stopped.")
+				return
+			case event, ok := <-ch:
+				if !ok {
+					return
+				}
+				l.Log(event)
+			}
+		}
+	}()
+}
+
+func (l *Logger) Stop() {
+	if l.cancel != nil {
+		l.cancel()
+	}
 }
 
 func (l *Logger) Log(event Event) {

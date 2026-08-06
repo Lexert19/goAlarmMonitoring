@@ -8,15 +8,13 @@ import (
 
 type AlarmService struct {
 	bus    *EventBus
-	logger *Logger
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
-func NewAlarmService(bus *EventBus, logger *Logger) *AlarmService {
+func NewAlarmService(bus *EventBus) *AlarmService {
 	return &AlarmService{
-		bus:    bus,
-		logger: logger,
+		bus: bus,
 	}
 }
 
@@ -37,7 +35,6 @@ func (as *AlarmService) Start(ctx context.Context) {
 				if !ok {
 					return
 				}
-				as.logger.Log(event)
 
 				if event.Type == Smoke {
 					fmt.Printf("Smoke detected at %s!\n", event.Time.Format("15:04:05"))

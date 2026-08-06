@@ -16,13 +16,14 @@ func main() {
 	}
 
 	bus := NewEventBus()
-	logger := NewLogger()
-	alarm := NewAlarmService(bus, logger)
+	logger := NewLogger(bus)
+	alarm := NewAlarmService(bus)
 	sensor := NewSensor(bus, cfg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	logger.Start(ctx)
 	alarm.Start(ctx)
 
 	if cfg.AutoStart {
