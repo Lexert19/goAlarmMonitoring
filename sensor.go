@@ -58,8 +58,6 @@ func (s *Sensor) run(ctx context.Context) {
 	ticker := time.NewTicker(time.Duration(s.config.TickerSec) * time.Second)
 	defer ticker.Stop()
 
-	rand.Seed(time.Now().UnixNano())
-
 	for {
 		select {
 		case <-ctx.Done():
