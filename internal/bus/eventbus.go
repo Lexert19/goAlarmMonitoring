@@ -31,10 +31,7 @@ func (eb *EventBus) Publish(event types.Event) {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
 	for _, ch := range eb.subscribers {
-		select {
-		case ch <- event:
-		default:
-		}
+		ch <- event
 	}
 }
 

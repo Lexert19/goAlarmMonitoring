@@ -88,5 +88,5 @@ func (s *SimulatedSensor) run(ctx context.Context) {
 }
 
 func (s *SimulatedSensor) publish(typ types.EventType, level types.Level) {
-	s.bus.Publish(types.NewEvent(typ, level, s.id))
+	go s.bus.Publish(types.NewEvent(typ, level, s.id))
 }

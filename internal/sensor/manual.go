@@ -14,17 +14,18 @@ import (
 )
 
 type ManualSensor struct {
-	bus     *bus.EventBus
-	cancel  context.CancelFunc
-	running bool
-	mu      sync.Mutex
-	id      uuid.UUID
+	eventBus *bus.EventBus
+	cancel   context.CancelFunc
+	running  bool
+	mu       sync.Mutex
+	wg       sync.WaitGroup
+	id       uuid.UUID
 }
 
 func NewManualSensor(b *bus.EventBus) *ManualSensor {
 	return &ManualSensor{
-		bus: b,
-		id:  uuid.Must(uuid.NewV7()),
+		eventBus: b,
+		id:       uuid.Must(uuid.NewV7()),
 	}
 }
 
@@ -41,18 +42,21 @@ func (m *ManualSensor) Start(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	m.cancel = cancel
 	m.running = true
+	m.wg.Add(1)
 	go m.run(ctx)
 	return nil
 }
 
 func (m *ManualSensor) Stop() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.cancel != nil {
 		m.cancel()
 		m.cancel = nil
 	}
-	m.running = false
+	m.mu.Unlock()
+	m.wg.Wait()
+	m.mu.Lock()
+	m.mu.Unlock()
 }
 
 func (m *ManualSensor) IsRunning() bool {
@@ -62,7 +66,26 @@ func (m *ManualSensor) IsRunning() bool {
 }
 
 func (m *ManualSensor) run(ctx context.Context) {
+	defer func() {
+		m.mu.Lock()
+		m.running = false
+		m.mu.Unlock()
+		m.wg.Done()
+	}()
+
 	scanner := bufio.NewScanner(os.Stdin)
+	lines := make(chan string, 1)
+
+	go func() {
+		for scanner.Scan() {
+			select {
+			case lines <- scanner.Text():
+			case <-ctx.Done():
+				return
+			}
+		}
+		close(lines)
+	}()
 	fmt.Println("  m - Motion (INFO)")
 	fmt.Println("  d - Door (WARNING)")
 	fmt.Println("  s - Smoke (CRITICAL)")
@@ -72,14 +95,10 @@ func (m *ManualSensor) run(ctx context.Context) {
 		case <-ctx.Done():
 			fmt.Println("Manual sensor stopped.")
 			return
-		default:
-			if !scanner.Scan() {
-				if err := scanner.Err(); err != nil {
-					fmt.Fprintf(os.Stderr, "error reading input: %v\n", err)
-				}
+		case text, ok := <-lines:
+			if !ok {
 				return
 			}
-			text := scanner.Text()
 			if len(text) == 0 {
 				continue
 			}
@@ -98,7 +117,7 @@ func (m *ManualSensor) run(ctx context.Context) {
 				continue
 			}
 			event := types.NewEvent(typ, level, m.id)
-			m.bus.Publish(event)
+			go m.eventBus.Publish(event)
 		}
 	}
 }

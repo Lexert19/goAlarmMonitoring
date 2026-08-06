@@ -2,6 +2,5 @@ auto_start: true
 ticker_sec: 2
 motion_prob: 0.4
 door_prob: 0.3
-smoke_prob: 0.2
-http_port: "9090"
-timeout: 10s
+smoke_prob: 0.0
+buffer_size: 20
