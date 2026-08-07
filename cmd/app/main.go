@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"goAlarmMonitoring/internal/alarm"
+	"goAlarmMonitoring/internal/analysis"
 	"goAlarmMonitoring/internal/bus"
 	"goAlarmMonitoring/internal/config"
 	"goAlarmMonitoring/internal/logger"
@@ -14,7 +15,7 @@ import (
 	"syscall"
 )
 
-// reconfig 019fdb50-ed7c-7952-898d-15e69e4426ee ticker 1
+// reconfig 019fdc08-1304-735a-a245-93cdf47ee709 ticker 1
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -25,7 +26,8 @@ func main() {
 	eventBus := bus.NewEventBus()
 	log := logger.NewLogger(eventBus)
 	alarmRepo := alarm.NewMemoryAlarmRepository()
-	alarmSvc := alarm.NewAlarmService(eventBus, eventBus, alarmRepo)
+	alarmSvc := alarm.NewAlarmService(eventBus, alarmRepo)
+	analysisSvc := analysis.NewAnalysisService(eventBus, alarmSvc)
 	alarmLog := alarm.NewAlarmLogger(eventBus)
 
 	devRegistry := registry.NewMemoryDeviceRegistry(eventBus, cfg)
@@ -40,7 +42,7 @@ func main() {
 	defer cancel()
 
 	log.Start(ctx)
-	alarmSvc.Start(ctx)
+	analysisSvc.Start(ctx)
 	alarmLog.Start(ctx)
 
 	if err := manual.Start(ctx); err != nil {
@@ -55,7 +57,7 @@ func main() {
 	fmt.Println("\nShutting down...")
 	cancel()
 	devRegistry.StopAll()
-	alarmSvc.Stop()
+	analysisSvc.Stop()
 	alarmLog.Stop()
 	log.Stop()
 	eventBus.Close()
