@@ -11,4 +11,9 @@ type Sensor interface {
 	Stop()
 	IsRunning() bool
 	ID() uuid.UUID
+	ReconfigureOne(key string, value interface{}) error
+}
+
+type CommandProcessor interface {
+	ProcessCommand(line string)
 }

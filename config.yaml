@@ -2,5 +2,5 @@ auto_start: true
 ticker_sec: 2
 motion_prob: 0.4
 door_prob: 0.3
-smoke_prob: 0.0
+smoke_prob: 0.1
 buffer_size: 20

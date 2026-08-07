@@ -64,6 +64,40 @@ func (s *SimulatedSensor) IsRunning() bool {
 	return s.running
 }
 
+func (s *SimulatedSensor) ReconfigureOne(key string, value interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch key {
+	case "motion":
+		v, ok := value.(float64)
+		if !ok || v < 0 || v > 1 {
+			return fmt.Errorf("invalid motion prob")
+		}
+		s.config.MotionProb = v
+	case "door":
+		v, ok := value.(float64)
+		if !ok || v < 0 || v > 1 {
+			return fmt.Errorf("invalid door prob")
+		}
+		s.config.DoorProb = v
+	case "smoke":
+		v, ok := value.(float64)
+		if !ok || v < 0 || v > 1 {
+			return fmt.Errorf("invalid smoke prob")
+		}
+		s.config.SmokeProb = v
+	case "ticker":
+		v, ok := value.(int)
+		if !ok || v <= 0 {
+			return fmt.Errorf("invalid ticker sec")
+		}
+		s.config.TickerSec = v
+	default:
+		return fmt.Errorf("unknown key")
+	}
+	return nil
+}
+
 func (s *SimulatedSensor) run(ctx context.Context) {
 	ticker := time.NewTicker(time.Duration(s.config.TickerSec) * time.Second)
 	defer ticker.Stop()

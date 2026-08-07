@@ -7,12 +7,14 @@ import (
 	"goAlarmMonitoring/internal/bus"
 	"goAlarmMonitoring/internal/config"
 	"goAlarmMonitoring/internal/logger"
+	"goAlarmMonitoring/internal/reconfig"
 	"goAlarmMonitoring/internal/sensor"
 	"os"
 	"os/signal"
 	"syscall"
 )
 
+// reconfig 019fdaee-5806-7915-bd16-248604d05df1 smoke 1
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -20,7 +22,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	eventBus := bus.NewEventBus(cfg.BufferSize)
+	eventBus := bus.NewEventBus()
 	logger := logger.NewLogger(eventBus)
 	alarmSvc := alarm.NewAlarmService(eventBus)
 
@@ -40,6 +42,9 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	reconfigurator := reconfig.NewReconfigurator(sensors, cfg)
+	manual.SetReconfigurator(reconfigurator)
 
 	logger.Start(ctx)
 	alarmSvc.Start(ctx)
