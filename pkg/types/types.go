@@ -14,6 +14,11 @@ const (
 	Smoke
 )
 
+type Event interface {
+	GetDeviceID() uuid.UUID
+	GetTime() time.Time
+}
+
 func (e EventType) String() string {
 	switch e {
 	case Motion:
@@ -51,9 +56,15 @@ func NewSensorEvent(typ EventType, level Level, deviceID uuid.UUID) SensorEvent 
 	}
 }
 
+func (e SensorEvent) GetDeviceID() uuid.UUID { return e.DeviceID }
+func (e SensorEvent) GetTime() time.Time     { return e.Time }
+
 type AlarmCreatedEvent struct {
 	AlarmID   uuid.UUID
 	DeviceID  uuid.UUID
 	AlarmType EventType
 	CreatedAt time.Time
 }
+
+func (e AlarmCreatedEvent) GetDeviceID() uuid.UUID { return e.DeviceID }
+func (e AlarmCreatedEvent) GetTime() time.Time     { return e.CreatedAt }

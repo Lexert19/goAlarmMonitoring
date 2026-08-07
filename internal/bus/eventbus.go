@@ -1,17 +1,20 @@
 package bus
 
 import (
+	"goAlarmMonitoring/pkg/types"
 	"sync"
 
 	"github.com/eapache/queue"
 )
 
+type Event = types.Event
+
 type EventPublisher interface {
-	Publish(event any)
+	Publish(event Event)
 }
 
 type EventSubscriber interface {
-	Subscribe() (<-chan any, func())
+	Subscribe() (<-chan Event, func())
 }
 
 type subscriber struct {
@@ -22,7 +25,7 @@ type subscriber struct {
 }
 
 type EventBus struct {
-	subscribers map[<-chan any]*subscriber
+	subscribers map[<-chan Event]*subscriber
 	mu          sync.RWMutex
 	stop        chan struct{}
 	wg          sync.WaitGroup
@@ -30,17 +33,17 @@ type EventBus struct {
 
 func NewEventBus() *EventBus {
 	eb := &EventBus{
-		subscribers: make(map[<-chan any]*subscriber),
+		subscribers: make(map[<-chan Event]*subscriber),
 		stop:        make(chan struct{}),
 	}
 	return eb
 }
 
-func (eb *EventBus) Subscribe() (<-chan any, func()) {
+func (eb *EventBus) Subscribe() (<-chan Event, func()) {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
 
-	outCh := make(chan any, 100)
+	outCh := make(chan Event, 100)
 	sub := &subscriber{
 		queue:  queue.New(),
 		done:   make(chan struct{}),
@@ -62,7 +65,7 @@ func (eb *EventBus) Subscribe() (<-chan any, func()) {
 	return outCh, unsubscribe
 }
 
-func (eb *EventBus) Publish(event any) {
+func (eb *EventBus) Publish(event Event) {
 	eb.mu.RLock()
 	defer eb.mu.RUnlock()
 
@@ -81,10 +84,7 @@ func (eb *EventBus) Publish(event any) {
 	}
 }
 
-// rejestr urzadzen - warstwa ktora sie opiekuhje urzadzeniami, rejestracja nowego czujnika
-// system nie zapomina alarmu, instancja struktury alarm, kiedy, logi jak struktura danych oraz alarm, reposiotory alarmrepository
-// alarmlogger on alarmcreate --- print log
-func (eb *EventBus) bufferLoop(sub *subscriber, outCh chan<- any) {
+func (eb *EventBus) bufferLoop(sub *subscriber, outCh chan<- Event) {
 	defer eb.wg.Done()
 	defer close(outCh)
 
@@ -102,7 +102,7 @@ func (eb *EventBus) bufferLoop(sub *subscriber, outCh chan<- any) {
 			}
 		}
 
-		event := sub.queue.Remove().(any)
+		event := sub.queue.Remove().(Event)
 		sub.mu.Unlock()
 
 		select {
