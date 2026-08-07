@@ -15,19 +15,29 @@ import (
 )
 
 type SimulatedSensor struct {
-	bus     *bus.EventBus
-	config  *config.Config
-	cancel  context.CancelFunc
-	running bool
-	mu      sync.Mutex
-	id      uuid.UUID
+	bus        *bus.EventBus
+	config     *config.Config
+	cancel     context.CancelFunc
+	running    bool
+	mu         sync.Mutex
+	id         uuid.UUID
+	motionProb float64
+	doorProb   float64
+	smokeProb  float64
+	tickerSec  int
+	restartCh  chan struct{}
 }
 
 func NewSimulatedSensor(b *bus.EventBus, cfg *config.Config) *SimulatedSensor {
 	return &SimulatedSensor{
-		bus:    b,
-		config: cfg,
-		id:     uuid.Must(uuid.NewV7()),
+		bus:        b,
+		config:     cfg,
+		id:         uuid.Must(uuid.NewV7()),
+		motionProb: cfg.MotionProb,
+		doorProb:   cfg.DoorProb,
+		smokeProb:  cfg.SmokeProb,
+		tickerSec:  cfg.TickerSec,
+		restartCh:  make(chan struct{}, 1),
 	}
 }
 
@@ -91,7 +101,13 @@ func (s *SimulatedSensor) ReconfigureOne(key string, value interface{}) error {
 		if !ok || v <= 0 {
 			return fmt.Errorf("invalid ticker sec")
 		}
-		s.config.TickerSec = v
+		if s.tickerSec != v {
+			s.tickerSec = v
+			select {
+			case s.restartCh <- struct{}{}:
+			default:
+			}
+		}
 	default:
 		return fmt.Errorf("unknown key")
 	}
@@ -99,7 +115,12 @@ func (s *SimulatedSensor) ReconfigureOne(key string, value interface{}) error {
 }
 
 func (s *SimulatedSensor) run(ctx context.Context) {
-	ticker := time.NewTicker(time.Duration(s.config.TickerSec) * time.Second)
+	makeTicker := func() *time.Ticker {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return time.NewTicker(time.Duration(s.tickerSec) * time.Second)
+	}
+	ticker := makeTicker()
 	defer ticker.Stop()
 
 	for {
@@ -108,19 +129,28 @@ func (s *SimulatedSensor) run(ctx context.Context) {
 			fmt.Println("Sensor stopped.")
 			return
 		case <-ticker.C:
-			if rand.Float64() < s.config.MotionProb {
+			s.mu.Lock()
+			motionProb := s.motionProb
+			doorProb := s.doorProb
+			smokeProb := s.smokeProb
+			s.mu.Unlock()
+
+			if rand.Float64() < motionProb {
 				s.publish(types.Motion, types.INFO)
 			}
-			if rand.Float64() < s.config.DoorProb {
+			if rand.Float64() < doorProb {
 				s.publish(types.Door, types.WARNING)
 			}
-			if rand.Float64() < s.config.SmokeProb {
+			if rand.Float64() < smokeProb {
 				s.publish(types.Smoke, types.CRITICAL)
 			}
+		case <-s.restartCh:
+			ticker.Stop()
+			ticker = makeTicker()
 		}
 	}
 }
 
 func (s *SimulatedSensor) publish(typ types.EventType, level types.Level) {
-	go s.bus.Publish(types.NewEvent(typ, level, s.id))
+	s.bus.Publish(types.NewEvent(typ, level, s.id))
 }

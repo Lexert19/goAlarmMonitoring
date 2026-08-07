@@ -14,7 +14,7 @@ import (
 	"syscall"
 )
 
-// reconfig 019fdaee-5806-7915-bd16-248604d05df1 smoke 1
+// reconfig 019fdb09-7af8-73a5-aeeb-80f3bbad37c1 smoke 1
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -23,7 +23,7 @@ func main() {
 	}
 
 	eventBus := bus.NewEventBus()
-	logger := logger.NewLogger(eventBus)
+	log := logger.NewLogger(eventBus)
 	alarmSvc := alarm.NewAlarmService(eventBus)
 
 	var sensors []sensor.Sensor
@@ -46,7 +46,7 @@ func main() {
 	reconfigurator := reconfig.NewReconfigurator(sensors, cfg)
 	manual.SetReconfigurator(reconfigurator)
 
-	logger.Start(ctx)
+	log.Start(ctx)
 	alarmSvc.Start(ctx)
 
 	for _, s := range sensors {

@@ -55,7 +55,6 @@ func (eb *EventBus) dispatchLoop() {
 				return
 			default:
 			}
-			eb.cond.Wait()
 		}
 		event := eb.queue[0]
 		eb.queue = eb.queue[1:]
