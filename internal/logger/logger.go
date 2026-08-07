@@ -10,22 +10,23 @@ import (
 )
 
 type Logger struct {
-	bus         *bus.EventBus
+	subscriber  bus.EventSubscriber
 	cancel      context.CancelFunc
 	unsubscribe func()
 	wg          sync.WaitGroup
 }
 
-func NewLogger(b *bus.EventBus) *Logger {
+func NewLogger(sub bus.EventSubscriber) *Logger {
 	return &Logger{
-		bus: b,
+		subscriber: sub,
 	}
 }
+
 func (l *Logger) Start(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	l.cancel = cancel
 
-	ch, unsub := l.bus.Subscribe()
+	ch, unsub := l.subscriber.Subscribe()
 	l.unsubscribe = unsub
 
 	l.wg.Add(1)
@@ -56,6 +57,12 @@ func (l *Logger) Stop() {
 	}
 }
 
-func (l *Logger) Log(event types.Event) {
-	fmt.Printf("[%s] %s [DeviceID:%s] %s\n", event.Level, event.Time.Format("15:04:05"), event.DeviceID, event.Type)
+func (l *Logger) Log(event any) {
+	switch e := event.(type) {
+	case types.SensorEvent:
+		fmt.Printf("[%s] %s [DeviceID:%s] %s\n", e.Level, e.Time.Format("15:04:05"), e.DeviceID, e.Type)
+	case types.AlarmCreatedEvent:
+		fmt.Printf("[ALARM EVENT] %s [AlarmID:%s] [DeviceID:%s] AlarmType:%s\n",
+			e.CreatedAt.Format("15:04:05"), e.AlarmID, e.DeviceID, e.AlarmType)
+	}
 }

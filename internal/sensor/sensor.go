@@ -13,7 +13,3 @@ type Sensor interface {
 	ID() uuid.UUID
 	ReconfigureOne(key string, value interface{}) error
 }
-
-type CommandProcessor interface {
-	ProcessCommand(line string)
-}

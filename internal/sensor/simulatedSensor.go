@@ -15,7 +15,7 @@ import (
 )
 
 type SimulatedSensor struct {
-	bus        *bus.EventBus
+	publisher  bus.EventPublisher
 	config     *config.Config
 	cancel     context.CancelFunc
 	running    bool
@@ -29,9 +29,9 @@ type SimulatedSensor struct {
 	wg         sync.WaitGroup
 }
 
-func NewSimulatedSensor(b *bus.EventBus, cfg *config.Config) *SimulatedSensor {
+func NewSimulatedSensor(pub bus.EventPublisher, cfg *config.Config) *SimulatedSensor {
 	return &SimulatedSensor{
-		bus:        b,
+		publisher:  pub,
 		config:     cfg,
 		id:         uuid.Must(uuid.NewV7()),
 		motionProb: cfg.MotionProb,
@@ -158,5 +158,5 @@ func (s *SimulatedSensor) run(ctx context.Context) {
 }
 
 func (s *SimulatedSensor) publish(typ types.EventType, level types.Level) {
-	s.bus.Publish(types.NewEvent(typ, level, s.id))
+	s.publisher.Publish(types.NewSensorEvent(typ, level, s.id))
 }

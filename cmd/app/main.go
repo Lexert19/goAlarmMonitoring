@@ -7,14 +7,14 @@ import (
 	"goAlarmMonitoring/internal/bus"
 	"goAlarmMonitoring/internal/config"
 	"goAlarmMonitoring/internal/logger"
-	"goAlarmMonitoring/internal/reconfig"
+	"goAlarmMonitoring/internal/registry"
 	"goAlarmMonitoring/internal/sensor"
 	"os"
 	"os/signal"
 	"syscall"
 )
 
-// reconfig 019fdb37-1b48-73fb-85f5-ebe7e3f3d9a4 ticker 1
+// reconfig 019fdb50-ed7c-7952-898d-15e69e4426ee ticker 1
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -24,36 +24,29 @@ func main() {
 
 	eventBus := bus.NewEventBus()
 	log := logger.NewLogger(eventBus)
-	alarmSvc := alarm.NewAlarmService(eventBus)
+	alarmRepo := alarm.NewMemoryAlarmRepository()
+	alarmSvc := alarm.NewAlarmService(eventBus, eventBus, alarmRepo)
+	alarmLog := alarm.NewAlarmLogger(eventBus)
 
-	var sensors []sensor.Sensor
+	devRegistry := registry.NewMemoryDeviceRegistry(eventBus, cfg)
 
-	if cfg.AutoStart {
-		for i := 0; i < 1; i++ {
-			s := sensor.NewSimulatedSensor(eventBus, cfg)
-			sensors = append(sensors, s)
-			fmt.Printf("Starting sensor %d with ID: %s\n", i+1, s.ID())
-		}
+	manual := sensor.NewManualSensor(eventBus, devRegistry)
+	if err := devRegistry.Register(manual); err != nil {
+		fmt.Println("Error registering manual sensor:", err)
+		os.Exit(1)
 	}
-
-	manual := sensor.NewManualSensor(eventBus)
-	sensors = append(sensors, manual)
-	fmt.Printf("Manual sensor started with ID: %s\n", manual.ID())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	reconfigurator := reconfig.NewReconfigurator(sensors, cfg)
-	manual.SetReconfigurator(reconfigurator)
-
 	log.Start(ctx)
 	alarmSvc.Start(ctx)
+	alarmLog.Start(ctx)
 
-	for _, s := range sensors {
-		if err := s.Start(ctx); err != nil {
-			fmt.Printf("Error starting sensor %s: %v\n", s.ID(), err)
-		}
+	if err := manual.Start(ctx); err != nil {
+		fmt.Println("Error starting manual sensor:", err)
 	}
+	fmt.Printf("Manual sensor started with ID: %s\n", manual.ID())
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
@@ -61,10 +54,9 @@ func main() {
 
 	fmt.Println("\nShutting down...")
 	cancel()
-	for _, s := range sensors {
-		s.Stop()
-	}
+	devRegistry.StopAll()
 	alarmSvc.Stop()
+	alarmLog.Stop()
 	log.Stop()
 	eventBus.Close()
 }

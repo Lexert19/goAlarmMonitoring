@@ -35,18 +35,25 @@ const (
 	CRITICAL Level = "CRITICAL"
 )
 
-type Event struct {
+type SensorEvent struct {
 	DeviceID uuid.UUID
 	Type     EventType
 	Time     time.Time
 	Level    Level
 }
 
-func NewEvent(typ EventType, level Level, deviceID uuid.UUID) Event {
-	return Event{
+func NewSensorEvent(typ EventType, level Level, deviceID uuid.UUID) SensorEvent {
+	return SensorEvent{
 		DeviceID: deviceID,
 		Type:     typ,
 		Time:     time.Now(),
 		Level:    level,
 	}
+}
+
+type AlarmCreatedEvent struct {
+	AlarmID   uuid.UUID
+	DeviceID  uuid.UUID
+	AlarmType EventType
+	CreatedAt time.Time
 }

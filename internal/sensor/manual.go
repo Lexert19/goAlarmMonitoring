@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,35 +17,36 @@ import (
 	"github.com/google/uuid"
 )
 
-type ManualSensor struct {
-	eventBus       *bus.EventBus
-	cancel         context.CancelFunc
-	running        bool
-	mu             sync.Mutex
-	wg             sync.WaitGroup
-	id             uuid.UUID
-	reconfigurator CommandProcessor
-	cmdQueue       *queue.Queue
-	notifyCh       chan struct{}
+type RegistryCommander interface {
+	AddSimulatedSensor(ctx context.Context) (Sensor, error)
+	Reconfigure(id uuid.UUID, key string, value interface{}) error
+	ListAll() []Sensor
 }
 
-func NewManualSensor(b *bus.EventBus) *ManualSensor {
+type ManualSensor struct {
+	publisher bus.EventPublisher
+	registry  RegistryCommander
+	cancel    context.CancelFunc
+	running   bool
+	mu        sync.Mutex
+	wg        sync.WaitGroup
+	id        uuid.UUID
+	cmdQueue  *queue.Queue
+	notifyCh  chan struct{}
+}
+
+func NewManualSensor(pub bus.EventPublisher, reg RegistryCommander) *ManualSensor {
 	return &ManualSensor{
-		eventBus: b,
-		id:       uuid.Must(uuid.NewV7()),
-		cmdQueue: queue.New(),
-		notifyCh: make(chan struct{}, 1),
+		publisher: pub,
+		registry:  reg,
+		id:        uuid.Must(uuid.NewV7()),
+		cmdQueue:  queue.New(),
+		notifyCh:  make(chan struct{}, 1),
 	}
 }
 
 func (m *ManualSensor) ID() uuid.UUID {
 	return m.id
-}
-
-func (m *ManualSensor) SetReconfigurator(r CommandProcessor) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.reconfigurator = r
 }
 
 func (m *ManualSensor) IsRunning() bool {
@@ -135,7 +137,9 @@ func (m *ManualSensor) run(ctx context.Context) {
 	fmt.Println("  m - Motion (INFO)")
 	fmt.Println("  d - Door (WARNING)")
 	fmt.Println("  s - Smoke (CRITICAL)")
-	fmt.Println("  reconfig <sensor_id> <key> <value> - reconfigure sensor")
+	fmt.Println("  add - Add new simulated sensor")
+	fmt.Println("  list - List all active sensors")
+	fmt.Println("  reconfig <uuid> <key> <value> - Reconfigure sensor by exact UUID")
 
 	for {
 		select {
@@ -153,45 +157,89 @@ func (m *ManualSensor) run(ctx context.Context) {
 				line := m.cmdQueue.Remove().(string)
 				m.mu.Unlock()
 
-				m.processCommand(line)
+				m.processCommand(ctx, line)
 			}
 		}
 	}
 }
 
-func (m *ManualSensor) processCommand(line string) {
+func (m *ManualSensor) processCommand(ctx context.Context, line string) {
 	line = strings.TrimSpace(line)
 	if line == "" {
 		return
 	}
 	parts := strings.Fields(line)
-	if len(parts) == 1 && len(parts[0]) == 1 {
-		ch := parts[0][0]
-		var typ types.EventType
-		var level types.Level
-		switch ch {
-		case 'm':
-			typ, level = types.Motion, types.INFO
-		case 'd':
-			typ, level = types.Door, types.WARNING
-		case 's':
-			typ, level = types.Smoke, types.CRITICAL
-		default:
-			fmt.Println("Unknown command. Available: m, d, s")
+	if len(parts) == 1 {
+		switch parts[0] {
+		case "m":
+			m.publisher.Publish(types.NewSensorEvent(types.Motion, types.INFO, m.id))
+			return
+		case "d":
+			m.publisher.Publish(types.NewSensorEvent(types.Door, types.WARNING, m.id))
+			return
+		case "s":
+			m.publisher.Publish(types.NewSensorEvent(types.Smoke, types.CRITICAL, m.id))
+			return
+		case "add":
+			s, err := m.registry.AddSimulatedSensor(ctx)
+			if err != nil {
+				fmt.Printf("Failed to add sensor: %v\n", err)
+			} else {
+				fmt.Printf("Added sensor ID: %s\n", s.ID())
+			}
+			return
+		case "list", "ls":
+			sensors := m.registry.ListAll()
+			fmt.Println("\n--- Active Sensors ---")
+			for _, s := range sensors {
+				fmt.Printf("ID: %s | Running: %v\n", s.ID(), s.IsRunning())
+			}
+			fmt.Println("----------------------")
 			return
 		}
-		event := types.NewEvent(typ, level, m.id)
-		m.eventBus.Publish(event)
-		fmt.Printf("Manual event published: %s %s\n", typ, level)
-	} else {
-		m.mu.Lock()
-		reconfig := m.reconfigurator
-		m.mu.Unlock()
+	}
 
-		if reconfig != nil {
-			reconfig.ProcessCommand(line)
-		} else {
-			fmt.Println("Reconfigurator not set")
+	if parts[0] == "reconfig" {
+		if len(parts) != 4 {
+			fmt.Println("Usage: reconfig <uuid> <key> <value>")
+			return
 		}
+
+		parsedID, err := uuid.Parse(parts[1])
+		if err != nil {
+			fmt.Printf("Invalid UUID format: %v\n", err)
+			return
+		}
+
+		key := parts[2]
+		rawVal := parts[3]
+		var val interface{}
+
+		switch key {
+		case "motion", "door", "smoke":
+			f, err := strconv.ParseFloat(rawVal, 64)
+			if err != nil || f < 0 || f > 1 {
+				fmt.Println("Value must be float between 0.0 and 1.0")
+				return
+			}
+			val = f
+		case "ticker":
+			i, err := strconv.Atoi(rawVal)
+			if err != nil || i <= 0 {
+				fmt.Println("Value must be positive integer")
+				return
+			}
+			val = i
+		default:
+			fmt.Println("Unknown key. Available: motion, door, smoke, ticker")
+			return
+		}
+
+		if err := m.registry.Reconfigure(parsedID, key, val); err != nil {
+			fmt.Printf("Reconfigure error: %v\n", err)
+		} else {
+			fmt.Printf("Sensor %s reconfigured successfully\n", parsedID)
+		}
+		return
 	}
 }
