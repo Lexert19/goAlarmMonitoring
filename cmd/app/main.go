@@ -14,7 +14,7 @@ import (
 	"syscall"
 )
 
-// reconfig 019fdb09-7af8-73a5-aeeb-80f3bbad37c1 smoke 1
+// reconfig 019fdb37-1b48-73fb-85f5-ebe7e3f3d9a4 ticker 1
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -29,7 +29,7 @@ func main() {
 	var sensors []sensor.Sensor
 
 	if cfg.AutoStart {
-		for i := 0; i < 2; i++ {
+		for i := 0; i < 1; i++ {
 			s := sensor.NewSimulatedSensor(eventBus, cfg)
 			sensors = append(sensors, s)
 			fmt.Printf("Starting sensor %d with ID: %s\n", i+1, s.ID())
@@ -65,5 +65,6 @@ func main() {
 		s.Stop()
 	}
 	alarmSvc.Stop()
+	log.Stop()
 	eventBus.Close()
 }

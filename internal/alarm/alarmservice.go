@@ -10,9 +10,10 @@ import (
 )
 
 type AlarmService struct {
-	bus    *bus.EventBus
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	bus         *bus.EventBus
+	cancel      context.CancelFunc
+	unsubscribe func()
+	wg          sync.WaitGroup
 }
 
 func NewAlarmService(b *bus.EventBus) *AlarmService {
@@ -25,7 +26,9 @@ func (as *AlarmService) Start(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	as.cancel = cancel
 
-	ch := as.bus.Subscribe()
+	ch, unsub := as.bus.Subscribe()
+	as.unsubscribe = unsub
+
 	as.wg.Add(1)
 	go func() {
 		defer as.wg.Done()
@@ -51,4 +54,7 @@ func (as *AlarmService) Stop() {
 		as.cancel()
 	}
 	as.wg.Wait()
+	if as.unsubscribe != nil {
+		as.unsubscribe()
+	}
 }

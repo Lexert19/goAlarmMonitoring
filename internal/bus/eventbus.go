@@ -4,79 +4,112 @@ import (
 	"sync"
 
 	"goAlarmMonitoring/pkg/types"
+
+	"github.com/eapache/queue"
 )
 
+type subscriber struct {
+	queue  *queue.Queue
+	done   chan struct{}
+	notify chan struct{}
+	mu     sync.Mutex
+}
+
 type EventBus struct {
-	subscribers []chan types.Event
-	mu          sync.Mutex
-	queue       []types.Event
-	queueMu     sync.Mutex
-	cond        *sync.Cond
+	subscribers map[<-chan types.Event]*subscriber
+	mu          sync.RWMutex
 	stop        chan struct{}
 	wg          sync.WaitGroup
 }
 
 func NewEventBus() *EventBus {
 	eb := &EventBus{
-		subscribers: make([]chan types.Event, 0),
-		queue:       make([]types.Event, 0),
+		subscribers: make(map[<-chan types.Event]*subscriber),
 		stop:        make(chan struct{}),
 	}
-	eb.cond = sync.NewCond(&eb.queueMu)
-	eb.wg.Add(1)
-	go eb.dispatchLoop()
 	return eb
 }
 
-func (eb *EventBus) Subscribe() <-chan types.Event {
+func (eb *EventBus) Subscribe() (<-chan types.Event, func()) {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
-	ch := make(chan types.Event, 1000)
-	eb.subscribers = append(eb.subscribers, ch)
-	return ch
+
+	outCh := make(chan types.Event, 100)
+	sub := &subscriber{
+		queue:  queue.New(),
+		done:   make(chan struct{}),
+		notify: make(chan struct{}, 1),
+	}
+
+	eb.subscribers[outCh] = sub
+
+	eb.wg.Add(1)
+	go eb.bufferLoop(sub, outCh)
+
+	unsubscribe := func() {
+		eb.mu.Lock()
+		delete(eb.subscribers, outCh)
+		eb.mu.Unlock()
+		close(sub.done)
+	}
+
+	return outCh, unsubscribe
 }
 
 func (eb *EventBus) Publish(event types.Event) {
-	eb.queueMu.Lock()
-	eb.queue = append(eb.queue, event)
-	eb.queueMu.Unlock()
-	eb.cond.Signal()
-}
+	eb.mu.RLock()
+	defer eb.mu.RUnlock()
 
-func (eb *EventBus) dispatchLoop() {
-	defer eb.wg.Done()
-	for {
-		eb.queueMu.Lock()
-		for len(eb.queue) == 0 {
-			eb.cond.Wait()
+	for _, sub := range eb.subscribers {
+		sub.mu.Lock()
+		wasEmpty := sub.queue.Length() == 0
+		sub.queue.Add(event)
+		sub.mu.Unlock()
+
+		if wasEmpty {
 			select {
-			case <-eb.stop:
-				eb.queueMu.Unlock()
-				return
+			case sub.notify <- struct{}{}:
 			default:
 			}
 		}
-		event := eb.queue[0]
-		eb.queue = eb.queue[1:]
-		eb.queueMu.Unlock()
+	}
+}
 
-		eb.mu.Lock()
-		for _, ch := range eb.subscribers {
-			go func(c chan types.Event, e types.Event) {
-				c <- e
-			}(ch, event)
+func (eb *EventBus) bufferLoop(sub *subscriber, outCh chan<- types.Event) {
+	defer eb.wg.Done()
+	defer close(outCh)
+
+	for {
+		sub.mu.Lock()
+		if sub.queue.Length() == 0 {
+			sub.mu.Unlock()
+			select {
+			case <-sub.done:
+				return
+			case <-eb.stop:
+				return
+			case <-sub.notify:
+				continue
+			}
 		}
-		eb.mu.Unlock()
+
+		event := sub.queue.Remove().(types.Event)
+		sub.mu.Unlock()
+
+		select {
+		case outCh <- event:
+		case <-sub.done:
+			return
+		case <-eb.stop:
+			return
+		}
 	}
 }
 
 func (eb *EventBus) Close() {
 	close(eb.stop)
-	eb.cond.Signal()
 	eb.wg.Wait()
 	eb.mu.Lock()
-	defer eb.mu.Unlock()
-	for _, ch := range eb.subscribers {
-		close(ch)
-	}
+	eb.subscribers = nil
+	eb.mu.Unlock()
 }

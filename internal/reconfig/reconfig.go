@@ -7,8 +7,6 @@ import (
 
 	"goAlarmMonitoring/internal/config"
 	"goAlarmMonitoring/internal/sensor"
-
-	"github.com/google/uuid"
 )
 
 type Reconfigurator struct {
@@ -28,30 +26,43 @@ func (r *Reconfigurator) ProcessCommand(line string) {
 	if line == "" {
 		return
 	}
+
+	if line == "list" || line == "ls" {
+		fmt.Println("\n--- Active Sensors ---")
+		for _, s := range r.sensors {
+			fmt.Printf("ID: %s\n", s.ID())
+		}
+		fmt.Println("----------------------")
+		return
+	}
+
 	parts := strings.Fields(line)
 	if len(parts) != 4 || parts[0] != "reconfig" {
-		fmt.Println("Invalid command. Usage: reconfig <sensor_id> <key> <value>")
+		fmt.Println("Invalid command. Usage: reconfig <sensor_id_prefix> <key> <value> (or 'list')")
 		return
 	}
-	sensorID, err := uuid.Parse(parts[1])
-	if err != nil {
-		fmt.Printf("Invalid sensor ID: %v\n", err)
-		return
-	}
+
+	sensorIDInput := parts[1]
 	key := parts[2]
 	val := parts[3]
 
 	var target sensor.Sensor
-	found := false
+	foundCount := 0
+
 	for _, s := range r.sensors {
-		if s.ID() == sensorID {
+		idStr := s.ID().String()
+		if idStr == sensorIDInput || strings.HasPrefix(idStr, sensorIDInput) {
 			target = s
-			found = true
-			break
+			foundCount++
 		}
 	}
-	if !found {
-		fmt.Printf("Sensor %s not found\n", sensorID)
+
+	if foundCount == 0 {
+		fmt.Printf("Sensor matching prefix '%s' not found\n", sensorIDInput)
+		return
+	}
+	if foundCount > 1 {
+		fmt.Printf("Multiple sensors match prefix '%s'. Please provide more characters.\n", sensorIDInput)
 		return
 	}
 
@@ -79,6 +90,6 @@ func (r *Reconfigurator) ProcessCommand(line string) {
 	if err := target.ReconfigureOne(key, value); err != nil {
 		fmt.Printf("Reconfigure error: %v\n", err)
 	} else {
-		fmt.Printf("Sensor %s reconfigured\n", sensorID)
+		fmt.Printf("Sensor %s reconfigured successfully\n", target.ID())
 	}
 }

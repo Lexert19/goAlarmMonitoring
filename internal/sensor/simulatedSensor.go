@@ -26,6 +26,7 @@ type SimulatedSensor struct {
 	smokeProb  float64
 	tickerSec  int
 	restartCh  chan struct{}
+	wg         sync.WaitGroup
 }
 
 func NewSimulatedSensor(b *bus.EventBus, cfg *config.Config) *SimulatedSensor {
@@ -54,18 +55,21 @@ func (s *SimulatedSensor) Start(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 	s.running = true
+
+	s.wg.Add(1)
 	go s.run(ctx)
 	return nil
 }
 
 func (s *SimulatedSensor) Stop() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.cancel != nil {
 		s.cancel()
 		s.cancel = nil
 	}
 	s.running = false
+	s.mu.Unlock()
+	s.wg.Wait()
 }
 
 func (s *SimulatedSensor) IsRunning() bool {
@@ -83,19 +87,19 @@ func (s *SimulatedSensor) ReconfigureOne(key string, value interface{}) error {
 		if !ok || v < 0 || v > 1 {
 			return fmt.Errorf("invalid motion prob")
 		}
-		s.config.MotionProb = v
+		s.motionProb = v
 	case "door":
 		v, ok := value.(float64)
 		if !ok || v < 0 || v > 1 {
 			return fmt.Errorf("invalid door prob")
 		}
-		s.config.DoorProb = v
+		s.doorProb = v
 	case "smoke":
 		v, ok := value.(float64)
 		if !ok || v < 0 || v > 1 {
 			return fmt.Errorf("invalid smoke prob")
 		}
-		s.config.SmokeProb = v
+		s.smokeProb = v
 	case "ticker":
 		v, ok := value.(int)
 		if !ok || v <= 0 {
@@ -115,6 +119,8 @@ func (s *SimulatedSensor) ReconfigureOne(key string, value interface{}) error {
 }
 
 func (s *SimulatedSensor) run(ctx context.Context) {
+	defer s.wg.Done()
+
 	makeTicker := func() *time.Ticker {
 		s.mu.Lock()
 		defer s.mu.Unlock()
